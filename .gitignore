@@ -1,0 +1,10 @@
+node_modules/
+venv/
+dist/
+build/
+python/dist/
+*.pyc
+__pycache__/
+.DS_Store
+*.spec
+search.spec

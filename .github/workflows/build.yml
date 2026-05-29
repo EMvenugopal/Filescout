@@ -1,0 +1,95 @@
+name: Build FileScout
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+jobs:
+
+  # ── Build Windows .exe ────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Tesseract OCR (Windows)
+        run: |
+          choco install tesseract --yes
+          echo "C:\Program Files\Tesseract-OCR" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Install Python dependencies
+        run: pip install -r python/requirements.txt
+
+      - name: Build Python binary (Windows)
+        run: pyinstaller --onefile --distpath python/dist --name search python/search.py
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build React + Electron (Windows)
+        run: npm run pack:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileScout-Windows
+          path: dist/*.exe
+          retention-days: 30
+
+  # ── Build macOS .dmg ──────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Tesseract OCR (macOS)
+        run: brew install tesseract
+
+      - name: Install Python dependencies
+        run: pip install -r python/requirements.txt
+
+      - name: Build Python binary (macOS)
+        run: pyinstaller --onefile --distpath python/dist --name search python/search.py
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build React + Electron (macOS)
+        run: npm run pack:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileScout-macOS
+          path: dist/*.dmg
+          retention-days: 30

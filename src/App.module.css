@@ -280,6 +280,17 @@
   font-size: 12px;
 }
 
+.summaryLang {
+  padding: 3px 8px;
+  background: rgba(240, 192, 64, 0.12);
+  color: var(--accent);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-family: var(--font-head);
+}
+
 .resultsList {
   display: flex;
   flex-direction: column;

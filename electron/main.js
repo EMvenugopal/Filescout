@@ -7,7 +7,9 @@ const isDev = !app.isPackaged;
 
 function getPythonBinary() {
   if (isDev) {
-    return { cmd: 'python3', script: path.join(__dirname, '../python/search.py') };
+    const venvPython = path.join(__dirname, '../venv/bin/python3');
+    const cmd = fs.existsSync(venvPython) ? venvPython : 'python3';
+    return { cmd, script: path.join(__dirname, '../python/search.py') };
   }
   const ext = process.platform === 'win32' ? 'search.exe' : 'search';
   return { cmd: path.join(process.resourcesPath, 'python', ext), script: null };
@@ -52,28 +54,53 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-ipcMain.on('run-search', (event, { folder, keyword, contextChars }) => {
+ipcMain.on('run-search', (event, { folder, keyword, contextChars, language, ocrQuality }) => {
   const { cmd, script } = getPythonBinary();
   const args = script
     ? [script, '--folder', folder, '--keyword', keyword, '--context', String(contextChars || 80), '--json']
     : ['--folder', folder, '--keyword', keyword, '--context', String(contextChars || 80), '--json'];
 
-  const proc = spawn(cmd, args);
+  if (language && language !== 'en') {
+    args.push('--language', language);
+  }
+  if (ocrQuality && ocrQuality !== 'balanced') {
+    args.push('--ocr-quality', ocrQuality);
+  }
+
+  const proc = spawn(cmd, args, {
+    maxBuffer: 1024 * 1024 * 10,
+    timeout: 300000,
+    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+  });
   let buffer = '';
 
+  let stderrBuf = '';
   proc.stdout.on('data', (data) => { buffer += data.toString(); });
   proc.stderr.on('data', (data) => {
-    const line = data.toString().trim();
+    const chunk = data.toString();
+    stderrBuf += chunk;
+    const line = chunk.trim();
     if (line) event.sender.send('search-progress', line);
   });
-  proc.on('close', () => {
+
+  proc.on('close', (code) => {
+    const raw = buffer.trim();
+    if (!raw) {
+      event.sender.send('search-results', { ok: false, results: [], error: `Python process exited with code ${code} and produced no stdout output. stderr: ${stderrBuf.slice(-500)}` });
+      return;
+    }
     try {
-      const parsed = JSON.parse(buffer);
-      // Always send the results array, not the whole object
+      const parsed = JSON.parse(raw);
       const results = Array.isArray(parsed) ? parsed : (parsed.results || []);
-      event.sender.send('search-results', { ok: true, results });
+      event.sender.send('search-results', {
+        ok: true,
+        results,
+        searchTime: parsed.search_time_seconds,
+        language: parsed.language,
+        totalMatched: parsed.total_files_matched,
+      });
     } catch (e) {
-      event.sender.send('search-results', { ok: false, results: [], error: 'Failed to parse results: ' + e.message });
+      event.sender.send('search-results', { ok: false, results: [], error: `Failed to parse results: ${e.message}. Raw output: ${raw.slice(-300)}` });
     }
   });
   proc.on('error', (err) => {

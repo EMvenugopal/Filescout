@@ -43,10 +43,48 @@
 .filePath {
   font-size: 10px;
   color: var(--muted);
-  margin-top: 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.methodTag {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(64, 192, 128, 0.12);
+  color: var(--success);
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.langTag {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(240, 192, 64, 0.12);
+  color: var(--accent);
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.confBadge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  min-width: 36px;
+  text-align: center;
 }
 
 .matchBadge {

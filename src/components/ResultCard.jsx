@@ -3,7 +3,7 @@ import styles from './ResultCard.module.css';
 
 const FILE_ICONS = {
   '.pdf':  '⬡',
-  '.jpg':  '◻', '.jpeg': '◻', '.png': '◻', '.tiff': '◻', '.webp': '◻',
+  '.jpg':  '◻', '.jpeg': '◻', '.png': '◻', '.tiff': '◻', '.webp': '◻', '.svg': '◻',
   '.html': '⟨⟩', '.htm': '⟨⟩', '.jsx': '⟨⟩', '.tsx': '⟨⟩', '.vue': '⟨⟩',
   '.js':   'JS', '.ts':  'TS',
   '.css':  '✦',
@@ -23,6 +23,12 @@ function getTypeLabel(filepath) {
   return ext.replace('.', '').toUpperCase();
 }
 
+function getConfidenceColor(conf) {
+  if (conf >= 0.8) return '#40c080';
+  if (conf >= 0.5) return '#f0c040';
+  return '#e05050';
+}
+
 export default function ResultCard({ result, keyword }) {
   const [expanded, setExpanded] = useState(true);
 
@@ -36,6 +42,10 @@ export default function ResultCard({ result, keyword }) {
     ? result.file.slice(0, result.file.lastIndexOf(result.file.includes('/') ? '/' : '\\'))
     : '';
 
+  const confidence = result.confidence;
+  const extractionMethod = result.extraction_method || '';
+  const detectedLang = result.detected_language || '';
+
   return (
     <div className={styles.card}>
       <div className={styles.header} onClick={() => setExpanded(e => !e)}>
@@ -45,8 +55,21 @@ export default function ResultCard({ result, keyword }) {
             {filename}
             <span className={styles.typeTag}>{getTypeLabel(result.file)}</span>
           </div>
-          {directory && <div className={styles.filePath}>{directory}</div>}
+          <div className={styles.metaRow}>
+            {directory && <span className={styles.filePath}>{directory}</span>}
+            {extractionMethod && (
+              <span className={styles.methodTag}>{extractionMethod}</span>
+            )}
+            {detectedLang && detectedLang !== 'en' && (
+              <span className={styles.langTag}>{detectedLang.toUpperCase()}</span>
+            )}
+          </div>
         </div>
+        {confidence > 0 && (
+          <span className={styles.confBadge} style={{ color: getConfidenceColor(confidence) }}>
+            {Math.round(confidence * 100)}%
+          </span>
+        )}
         <div className={styles.matchBadge}>{result.match_count} match{result.match_count !== 1 ? 'es' : ''}</div>
         <button className={styles.openBtn} onClick={openFile} title="Open file">↗</button>
         <div className={styles.chevron} style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0)' }}>›</div>

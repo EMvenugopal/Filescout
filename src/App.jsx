@@ -2,16 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import styles from './App.module.css';
 import ResultCard from './components/ResultCard';
 import ProgressLog from './components/ProgressLog';
+import LanguageSelector from './components/LanguageSelector';
+import OcrQualitySelector from './components/OcrQualitySelector';
 
 const ipc = window.fileScout;
 
 export default function App() {
-  const [folder, setFolder]       = useState('');
-  const [keyword, setKeyword]     = useState('');
-  const [searching, setSearching] = useState(false);
-  const [results, setResults]     = useState(null);
-  const [progress, setProgress]   = useState([]);
-  const [error, setError]         = useState('');
+  const [folder, setFolder]           = useState('');
+  const [keyword, setKeyword]         = useState('');
+  const [searching, setSearching]     = useState(false);
+  const [results, setResults]         = useState(null);
+  const [progress, setProgress]       = useState([]);
+  const [error, setError]             = useState('');
+  const [searchLanguage, setLang]     = useState('en');
+  const [ocrQuality, setOcrQuality]   = useState('balanced');
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -20,7 +24,6 @@ export default function App() {
     ipc.onSearchResults((data) => {
       setSearching(false);
       if (data.ok) {
-        // Fix: handle both {results:[]} and plain array
         const arr = Array.isArray(data.results)
           ? data.results
           : Array.isArray(data.results?.results)
@@ -56,7 +59,8 @@ export default function App() {
     setResults(null);
     setProgress([]);
     setSearching(true);
-    ipc.runSearch(folder.trim(), keyword.trim(), 80);
+    const lang = searchLanguage !== 'en' ? searchLanguage : undefined;
+    ipc.runSearch(folder.trim(), keyword.trim(), 80, undefined, lang, ocrQuality);
   };
 
   const handleKeyDown = (e) => {
@@ -103,6 +107,10 @@ export default function App() {
             <button className={styles.clearBtn} onClick={() => { setKeyword(''); inputRef.current?.focus(); }}>✕</button>
           )}
         </div>
+
+        <LanguageSelector value={searchLanguage} onChange={setLang} />
+        <OcrQualitySelector value={ocrQuality} onChange={setOcrQuality} />
+
         <button
           className={styles.searchBtn}
           onClick={handleSearch}
@@ -138,6 +146,9 @@ export default function App() {
                 <span className={styles.badge}>{results.length} file{results.length !== 1 ? 's' : ''}</span>
                 <span className={styles.badge2}>{totalMatches} match{totalMatches !== 1 ? 'es' : ''}</span>
                 <span className={styles.summaryKeyword}>for "{keyword}"</span>
+                {searchLanguage !== 'en' && (
+                  <span className={styles.summaryLang}>{searchLanguage.toUpperCase()}</span>
+                )}
               </div>
               <div className={styles.resultsList}>
                 {results.map((r, i) => (

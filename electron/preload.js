@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('fileScout', {
-  runSearch:   (folder, keyword, contextChars, mode) =>
-    ipcRenderer.send('run-search', { folder, keyword, contextChars, mode }),
+  runSearch:   (folder, keyword, contextChars, mode, language, ocrQuality) =>
+    ipcRenderer.send('run-search', { folder, keyword, contextChars, mode, language, ocrQuality }),
   openFile:    (filePath) => ipcRenderer.send('open-file', filePath),
   browseFolder: () => ipcRenderer.invoke('browse-folder'),
   onSetFolder:     (cb) => ipcRenderer.on('set-folder',      (_e, v) => cb(v)),

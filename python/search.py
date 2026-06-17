@@ -6,7 +6,6 @@ import json
 import time
 import hashlib
 import tempfile
-import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -20,31 +19,15 @@ from processors.language_processor import (
     detect_language, resolve_ocr_languages, normalize_unicode,
     has_indic_script, get_script_name,
 )
+from index_db import IndexDatabase
 
-CACHE_DIR = os.path.join(tempfile.gettempdir(), 'filescout_cache')
-os.makedirs(CACHE_DIR, exist_ok=True)
-CACHE_LOCK = threading.Lock()
+db = None
 
-
-def _cache_path():
-    return os.path.join(CACHE_DIR, 'ocr_cache.json')
-
-
-def _load_cache():
-    try:
-        with open(_cache_path(), 'r') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_cache(cache):
-    try:
-        with CACHE_LOCK:
-            with open(_cache_path(), 'w') as f:
-                json.dump(cache, f)
-    except Exception:
-        pass
+def get_db():
+    global db
+    if db is None:
+        db = IndexDatabase()
+    return db
 
 
 def _cache_key(filepath):
@@ -166,6 +149,31 @@ def _process_file(filepath, folder, ocr_languages, ocr_quality, keyword_norm, co
             "detected_language": text_lang or "en",
         }
         print(f"FOUND: {len(matches)} match(es) in {rel}", file=sys.stderr, flush=True)
+        
+        # Add to database
+        try:
+            words = text.split()
+            positions = []
+            current_pos = 0
+            for word in words:
+                positions.append(current_pos)
+                current_pos += len(word) + 1
+            
+            db = get_db()
+            db.add_file(
+                filepath=str(filepath),
+                filename=rel,
+                extension=Path(filepath).suffix.lower(),
+                ocr_method=method or "unknown",
+                confidence=confidence,
+                language=text_lang or "en",
+                content_hash=_cache_key(str(filepath)),
+                words=words,
+                positions=positions
+            )
+        except Exception as e:
+            print(f"ERROR: {rel} - database update failed: {e}", file=sys.stderr, flush=True)
+        
         return result, text, method, confidence
     else:
         print(f"NONE: {rel}", file=sys.stderr, flush=True)
@@ -173,7 +181,23 @@ def _process_file(filepath, folder, ocr_languages, ocr_quality, keyword_norm, co
 
 
 def search_folder(folder, keyword, context_chars, search_language=None, ocr_quality='balanced'):
-    files = sorted(Path(folder).rglob("*"))
+    folder_path = Path(folder)
+    files = []
+    
+    # Collect files from the folder, excluding node_modules and other irrelevant directories
+    for item in folder_path.rglob("*"):
+        if not item.is_file():
+            continue
+        
+        # Skip files in node_modules and other irrelevant directories
+        parts = item.parts
+        if any(part.startswith('.') or part in ['node_modules', '__pycache__', '.git', 'dist', 'build'] for part in parts):
+            continue
+            
+        ext = item.suffix.lower()
+        if ext in SUPPORTED:
+            files.append(item)
+    
     results = []
 
     ocr_languages = resolve_ocr_languages(search_language)
@@ -181,48 +205,35 @@ def search_folder(folder, keyword, context_chars, search_language=None, ocr_qual
 
     supported = []
     for filepath in files:
-        if not filepath.is_file():
-            continue
         ext = filepath.suffix.lower()
         if ext in SUPPORTED:
             supported.append(filepath)
 
-    cache = _load_cache()
-    cache_updated = False
+    # First, check database for instant results (filtered by folder)
+    db = get_db()
+    abs_folder = str(Path(folder).resolve())
+    db_results = db.search(keyword, search_language, abs_folder)
+    
+    # Convert database results to expected format
+    for db_result in db_results:
+        results.append({
+            "file": db_result['filename'],
+            "filepath": db_result['filepath'],
+            "match_count": len(db_result['matches']),
+            "matches": db_result['matches'],
+            "extraction_method": db_result['ocr_method'],
+            "confidence": db_result['confidence'],
+            "detected_language": db_result['language'],
+        })
+        print(f"DATABASE FOUND: {len(db_result['matches'])} match(es) in {db_result['filename']}", file=sys.stderr, flush=True)
 
-    # Check cache first (fast path, no OCR needed)
+    # Check which files still need processing
     uncached = []
     for filepath in supported:
-        ck = _cache_key(str(filepath))
-        if ck in cache:
-            entry = cache[ck]
-            text = entry.get("text", "")
-            if text:
-                rel = str(filepath.relative_to(folder))
-                if search_language:
-                    try:
-                        text_lang, _ = detect_language(text)
-                    except Exception:
-                        text_lang = None
-                else:
-                    text_lang = None
-
-                matches = find_matches_multilingual(text, keyword_norm, context_chars, search_language)
-                if matches:
-                    results.append({
-                        "file": rel,
-                        "filepath": str(filepath),
-                        "match_count": len(matches),
-                        "matches": matches,
-                        "extraction_method": entry.get("method", "cached"),
-                        "confidence": entry.get("confidence", 0.0),
-                        "detected_language": text_lang or "en",
-                    })
-                    print(f"CACHED FOUND: {len(matches)} match(es) in {rel}", file=sys.stderr, flush=True)
-                else:
-                    print(f"CACHED NONE: {rel}", file=sys.stderr, flush=True)
-                continue
-        uncached.append(filepath)
+        rel = str(filepath.relative_to(folder))
+        found_in_db = any(r['file'] == rel for r in results)
+        if not found_in_db:
+            uncached.append(filepath)
 
     if not uncached:
         return results
@@ -244,30 +255,37 @@ def search_folder(folder, keyword, context_chars, search_language=None, ocr_qual
             if result:
                 results.append(result)
 
-            if text.strip():
-                ck = _cache_key(str(fp))
-                cache[ck] = {
-                    "text": text,
-                    "method": method or "unknown",
-                    "confidence": round(confidence, 3),
-                }
-                cache_updated = True
-
-    if cache_updated:
-        _save_cache(cache)
-
     return results
 
 
 def main():
     parser = argparse.ArgumentParser(description="FileScout search engine")
-    parser.add_argument("--folder",  "-f", required=True)
-    parser.add_argument("--keyword", "-k", required=True)
+    parser.add_argument("--folder",  "-f", required=False)
+    parser.add_argument("--keyword", "-k", required=False)
     parser.add_argument("--context", "-c", type=int, default=80)
     parser.add_argument("--json",    action="store_true", help="Output JSON (default mode)")
     parser.add_argument("--language", "-l", default=None, help="Search language code (en, hi, kn, te, ta, mr)")
     parser.add_argument("--ocr-quality", choices=["fast", "balanced", "best"], default="balanced")
+    parser.add_argument("--init-db", action="store_true", help="Initialize database and exit")
+    parser.add_argument("--clear-db", action="store_true", help="Clear database and exit")
     args = parser.parse_args()
+
+    # Allow --init-db and --clear-db without other arguments
+    if args.init_db or args.clear_db:
+        if args.folder or args.keyword:
+            print("Error: --init-db and --clear-db cannot be used with --folder or --keyword", file=sys.stderr)
+            sys.exit(1)
+
+    db = get_db()
+
+    if args.init_db:
+        print("Database initialized successfully")
+        sys.exit(0)
+
+    if args.clear_db:
+        db.clear_index()
+        print("Database cleared successfully")
+        sys.exit(0)
 
     if not os.path.isdir(args.folder):
         print(json.dumps({"error": f"Not a directory: {args.folder}", "results": []}), flush=True)
@@ -294,3 +312,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(json.dumps({"error": f"Unhandled exception: {e}", "results": []}), flush=True)
         sys.exit(1)
+    finally:
+        if db:
+            db.close()

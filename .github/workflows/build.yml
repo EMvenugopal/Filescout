@@ -28,22 +28,28 @@ jobs:
       - name: Install Tesseract OCR (Windows)
         run: |
           choco install tesseract --yes
-          echo "C:\Program Files\Tesseract-OCR" >> $env:GITHUB_PATH
+          echo "C:\\Program Files\\Tesseract-OCR" >> $env:GITHUB_PATH
         shell: pwsh
 
       - name: Install Python dependencies
         run: pip install -r python/requirements.txt
+        timeout-minutes: 30
 
       - name: Build Python binary (Windows)
-        run: pyinstaller --onefile --distpath python/dist --name search python/search.py
+        run: pyinstaller --onefile --workpath python/build --distpath python/dist --name search python/search.py
+        timeout-minutes: 60
+        continue-on-error: false
 
       - name: Install Node dependencies
         run: npm ci
+        timeout-minutes: 30
 
       - name: Build React + Electron (Windows)
         run: npm run pack:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 120
+        continue-on-error: false
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -75,17 +81,23 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r python/requirements.txt
+        timeout-minutes: 30
 
       - name: Build Python binary (macOS)
-        run: pyinstaller --onefile --distpath python/dist --name search python/search.py
+        run: pyinstaller --onefile --workpath python/build --distpath python/dist --name search python/search.py
+        timeout-minutes: 60
+        continue-on-error: false
 
       - name: Install Node dependencies
         run: npm ci
+        timeout-minutes: 30
 
       - name: Build React + Electron (macOS)
         run: npm run pack:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 120
+        continue-on-error: false
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4

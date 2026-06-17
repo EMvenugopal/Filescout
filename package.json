@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "concurrently \"cross-env BROWSER=none react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
     "react:build": "react-scripts build",
-    "build:python": "pyinstaller --onefile --distpath python/dist --name search python/search.py",
+    "build:python": "pyinstaller --onefile --workpath python/build --distpath python/dist --name search python/search.py",
     "pack:win": "npm run react:build && electron-builder --win",
     "pack:mac": "npm run react:build && electron-builder --mac"
   },

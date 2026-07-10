@@ -18,6 +18,27 @@ export default function App() {
   const [ocrQuality, setOcrQuality]   = useState('balanced');
   const inputRef = useRef(null);
 
+  // Indexing state
+  const [indexStatus, setIndexStatus]     = useState(null); // { total_files, indexed_files, is_fully_indexed }
+  const [indexing, setIndexing]           = useState(false);
+  const [indexProgress, setIndexProgress] = useState([]);
+  const [indexResult, setIndexResult]     = useState(null);
+
+  // Check index status when folder changes
+  useEffect(() => {
+    if (!ipc || !folder) {
+      setIndexStatus(null);
+      return;
+    }
+    ipc.indexStatus(folder).then((status) => {
+      if (status.ok) {
+        setIndexStatus(status);
+      } else {
+        setIndexStatus(null);
+      }
+    }).catch(() => setIndexStatus(null));
+  }, [folder]);
+
   useEffect(() => {
     if (!ipc) return;
     ipc.onSetFolder((f) => setFolder(f));
@@ -39,12 +60,31 @@ export default function App() {
     ipc.onProgress((line) => {
       setProgress((p) => [...p.slice(-199), line]);
     });
+    ipc.onIndexProgress((line) => {
+      setIndexProgress((p) => [...p.slice(-199), line]);
+    });
+    ipc.onIndexResults((data) => {
+      setIndexing(false);
+      if (data.ok) {
+        setIndexResult(data);
+        // Refresh index status
+        if (ipc && folder) {
+          ipc.indexStatus(folder).then((status) => {
+            if (status.ok) setIndexStatus(status);
+          });
+        }
+      } else {
+        setError(data.error || 'Indexing failed.');
+      }
+    });
     return () => {
       ipc.removeAllListeners('set-folder');
       ipc.removeAllListeners('search-results');
       ipc.removeAllListeners('search-progress');
+      ipc.removeAllListeners('index-progress');
+      ipc.removeAllListeners('index-results');
     };
-  }, []);
+  }, [folder]);
 
   const handleBrowse = async () => {
     if (!ipc) return;
@@ -59,16 +99,33 @@ export default function App() {
     setResults(null);
     setProgress([]);
     setSearching(true);
+
     const lang = searchLanguage !== 'en' ? searchLanguage : undefined;
-    ipc.runSearch(folder.trim(), keyword.trim(), 80, undefined, lang, ocrQuality);
+    // If folder is fully indexed, use search-only mode for instant results
+    const searchOnly = indexStatus?.is_fully_indexed;
+    ipc.runSearch(folder.trim(), keyword.trim(), 80, undefined, lang, ocrQuality, searchOnly);
   };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
   };
 
+  const handleIndex = () => {
+    if (!folder.trim()) { setError('Please select a folder first.'); return; }
+    setError('');
+    setIndexing(true);
+    setIndexProgress([]);
+    setIndexResult(null);
+    ipc.indexFolder(folder.trim(), ocrQuality);
+  };
+
   const totalMatches = Array.isArray(results)
     ? results.reduce((sum, r) => sum + (r.match_count || 0), 0)
+    : 0;
+
+  const isIndexed = indexStatus?.is_fully_indexed;
+  const indexPercent = indexStatus
+    ? Math.round((indexStatus.indexed_files / (indexStatus.total_files || 1)) * 100)
     : 0;
 
   return (
@@ -89,6 +146,50 @@ export default function App() {
         <button className={styles.browseBtn} onClick={handleBrowse}>Browse</button>
       </div>
 
+      {/* Index status bar */}
+      {folder && indexStatus && (
+        <div className={styles.indexBar}>
+          <div className={styles.indexInfo}>
+            {isIndexed ? (
+              <span className={styles.indexBadge Indexed}>INDEXED</span>
+            ) : (
+              <span className={styles.indexBadge}>{indexPercent}% indexed</span>
+            )}
+            <span className={styles.indexDetail}>
+              {indexStatus.indexed_files}/{indexStatus.total_files} files
+            </span>
+          </div>
+          {!isIndexed && !indexing && (
+            <button className={styles.indexBtn} onClick={handleIndex}>
+              Index Folder
+            </button>
+          )}
+          {indexing && (
+            <span className={styles.indexingLabel}>
+              <span className={styles.spinner} /> Indexing...
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Index progress */}
+      {indexing && indexProgress.length > 0 && (
+        <div className={styles.indexProgressWrap}>
+          <ProgressLog lines={indexProgress} searching={indexing} />
+        </div>
+      )}
+
+      {/* Index result summary */}
+      {indexResult && !indexing && (
+        <div className={styles.indexResult}>
+          Indexed {indexResult.indexed} file{indexResult.indexed !== 1 ? 's' : ''}
+          {indexResult.skipped > 0 && `, ${indexResult.skipped} skipped`}
+          {indexResult.errors > 0 && `, ${indexResult.errors} errors`}
+          {indexResult.alreadyIndexed > 0 && ` (${indexResult.alreadyIndexed} already cached)`}
+          {' '}&mdash; {indexResult.searchTime}s
+        </div>
+      )}
+
       <div className={styles.searchRow}>
         <div className={styles.searchWrap}>
           <span className={styles.searchIcon}>⌕</span>
@@ -96,7 +197,7 @@ export default function App() {
             ref={inputRef}
             className={styles.searchInput}
             type="text"
-            placeholder="Type a keyword and press Enter…"
+            placeholder={isIndexed ? "Type a keyword — instant search ready" : "Type a keyword and press Enter…"}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -128,7 +229,11 @@ export default function App() {
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}>◈</div>
               <div className={styles.emptyTitle}>Ready to scout</div>
-              <div className={styles.emptyDesc}>Select a folder, type a keyword, hit Search</div>
+              <div className={styles.emptyDesc}>
+                {isIndexed
+                  ? "Folder is indexed — search is instant"
+                  : "Select a folder, index it, then search"}
+              </div>
             </div>
           )}
 

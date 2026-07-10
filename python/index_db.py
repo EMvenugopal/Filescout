@@ -206,6 +206,15 @@ class IndexDatabase:
         
         return [dict(row) for row in cursor.fetchall()]
 
+    def is_file_indexed(self, filepath: str, content_hash: str) -> bool:
+        """Check if a file is already indexed with the same content hash."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            'SELECT id FROM files WHERE filepath = ? AND content_hash = ?',
+            (filepath, content_hash)
+        )
+        return cursor.fetchone() is not None
+
     def clear_index(self):
         with self._index_lock:
             cursor = self.conn.cursor()

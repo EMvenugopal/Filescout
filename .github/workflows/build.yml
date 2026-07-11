@@ -49,6 +49,8 @@ jobs:
         run: npm run pack:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WIN_CSC_LINK: ""
+          WIN_CSC_KEY_PASSWORD: ""
         timeout-minutes: 120
         continue-on-error: false
 
@@ -97,6 +99,7 @@ jobs:
         run: npm run pack:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         timeout-minutes: 120
         continue-on-error: false
 

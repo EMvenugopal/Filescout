@@ -45,14 +45,21 @@ jobs:
         run: npm ci
         timeout-minutes: 30
 
-      - name: Build React + Electron (Windows)
-        run: npm run pack:win
+      - name: Verify Python binary exists
+        run: dir python\dist\
+        shell: pwsh
+
+      - name: Build React (Windows)
+        run: npx react-scripts build
+        timeout-minutes: 10
+
+      - name: Build Electron installer (Windows)
+        run: npx electron-builder --win --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ""
           WIN_CSC_KEY_PASSWORD: ""
         timeout-minutes: 120
-        continue-on-error: false
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -95,13 +102,19 @@ jobs:
         run: npm ci
         timeout-minutes: 30
 
-      - name: Build React + Electron (macOS)
-        run: npm run pack:mac
+      - name: Verify Python binary exists
+        run: ls -la python/dist/
+
+      - name: Build React (macOS)
+        run: npx react-scripts build
+        timeout-minutes: 10
+
+      - name: Build Electron installer (macOS)
+        run: npx electron-builder --mac --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         timeout-minutes: 120
-        continue-on-error: false
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4

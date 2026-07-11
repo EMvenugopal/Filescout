@@ -151,7 +151,7 @@ export default function App() {
         <div className={styles.indexBar}>
           <div className={styles.indexInfo}>
             {isIndexed ? (
-              <span className={styles.indexBadge Indexed}>INDEXED</span>
+              <span className={`${styles.indexBadge} ${styles.Indexed}`}>INDEXED</span>
             ) : (
               <span className={styles.indexBadge}>{indexPercent}% indexed</span>
             )}

@@ -57,8 +57,7 @@ jobs:
         run: npx electron-builder --win --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WIN_CSC_LINK: ""
-          WIN_CSC_KEY_PASSWORD: ""
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         timeout-minutes: 120
 
       - name: Upload Windows installer
